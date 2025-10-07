@@ -136,9 +136,45 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
   "response": "respuesta del LLM",
   "context_used": "contexto del vector store o null",
   "tool_calls": [...],           # null si finish_reason != "tool_calls"
-  "finish_reason": "stop"        # "stop" | "tool_calls" | "length" | "error"
+  "finish_reason": "stop",       # "stop" | "tool_calls" | "length" | "error"
+  
+  # 🆕 Metadata (solo en /chat/auto-tools)
+  "iterations": 2,               # Número de iteraciones realizadas
+  "tools_executed": [            # Lista de tools ejecutadas
+    {
+      "tool_name": "search_vector_store",
+      "arguments": {"query": "..."},
+      "result_preview": "..."    # Preview del resultado (200 chars)
+    }
+  ]
 }
 ```
+
+## 📊 Metadata de Ejecución (Nuevo) ✨
+
+El endpoint `/chat/auto-tools` ahora incluye información detallada sobre la ejecución:
+
+```json
+{
+  "response": "Netra es un ingeniero mecánico...",
+  "iterations": 2,
+  "tools_executed": [
+    {
+      "tool_name": "search_vector_store",
+      "arguments": {"query": "Netra"},
+      "result_preview": "[{\"id\": 123, \"content\": \"...\"}]"
+    }
+  ]
+}
+```
+
+**Beneficios:**
+- 🔍 **Debugging**: Ver qué tools se ejecutaron
+- 📊 **Analytics**: Trackear uso de tools
+- 🎨 **UX**: Mostrar progreso al usuario
+- ⚡ **Optimización**: Identificar cuellos de botella
+
+Ver [TOOLS_METADATA.md](TOOLS_METADATA.md) para más detalles.
 
 ## 🧪 Testing
 
@@ -146,7 +182,7 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
 # Test básico
 python test_tools.py
 
-# Test auto-tools
+# Test auto-tools (incluye metadata)
 python test_auto_tools.py
 ```
 

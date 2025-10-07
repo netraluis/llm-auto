@@ -83,6 +83,14 @@ async def test_auto_tools():
                 result = response.json()
                 print(f"\n✅ Response exitoso:")
                 print(f"   📊 Finish reason: {result.get('finish_reason')}")
+                print(f"   🔄 Iterations: {result.get('iterations', 'N/A')}")
+                
+                tools_executed = result.get('tools_executed')
+                if tools_executed:
+                    print(f"   🔧 Tools ejecutadas: {len(tools_executed)}")
+                    for i, tool in enumerate(tools_executed, 1):
+                        print(f"      {i}. {tool['tool_name']}: {tool['arguments']}")
+                
                 print(f"   📝 Response: {result.get('response')[:200]}...")
                 print(f"\n📥 Full Response:")
                 print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -142,6 +150,8 @@ async def test_auto_tools_simple():
             
             result = response.json()
             print(f"\n✅ Response:")
+            print(f"   🔄 Iterations: {result.get('iterations', 'N/A')}")
+            print(f"   🔧 Tools ejecutadas: {len(result.get('tools_executed', []))}")
             print(json.dumps(result, indent=2, ensure_ascii=False))
             
         except Exception as e:
@@ -201,6 +211,8 @@ async def compare_endpoints():
         result2 = response2.json()
         print(f"   📝 tool_calls present: {result2.get('tool_calls') is not None}")
         print(f"   📝 finish_reason: {result2.get('finish_reason')}")
+        print(f"   🔄 iterations: {result2.get('iterations', 'N/A')}")
+        print(f"   🔧 tools_executed: {len(result2.get('tools_executed', []))}")
         print(f"   💬 response: {result2.get('response')[:150]}...")
 
 async def main():

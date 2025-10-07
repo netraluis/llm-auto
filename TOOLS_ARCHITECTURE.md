@@ -200,12 +200,14 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
 
 | Archivo | Qué Contiene |
 |---------|--------------|
-| `main.py:54-88` | **Ejecución** de tools |
+| `main.py:62-88` | **Ejecución** de tools |
 | `TOOLS_README.md` | Guía rápida |
 | `TOOLS_EXAMPLE.md` | Ejemplos detallados |
+| `TOOLS_METADATA.md` | **Nuevo**: Info sobre metadata de ejecución |
 | `TOOLS_CURL_EXAMPLES.sh` | Ejemplos cURL ejecutables |
 | `frontend_integration_example.ts` | Ejemplos para frontend |
 | `test_tools.py` | Tests Python |
+| `test_auto_tools.py` | Tests con metadata |
 
 ## 🎓 En Resumen
 

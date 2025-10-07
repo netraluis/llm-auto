@@ -44,26 +44,35 @@ class ChatRequest(BaseModel):
     tools: Optional[List[ToolDefinition]] = None
     tool_choice: Optional[str] = "auto"  # "auto", "none", or specific tool
 
+class ToolExecutionLog(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any]
+    result_preview: str
+
 class ChatResponse(BaseModel):
     response: str
     context_used: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
     finish_reason: Optional[str] = None
+    # Metadata para auto-tools
+    iterations: Optional[int] = None
+    tools_executed: Optional[List[ToolExecutionLog]] = None
 
 # Tool execution functions
-async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
+async def execute_tool(tool_name: str, arguments: Dict[str, Any], assistant_id: str = None) -> str:
     """
     Execute a tool based on its name
     """
     if tool_name == "search_vector_store":
         query = arguments.get("query", "")
         limit = arguments.get("limit", 5)
-        assistant_id = arguments.get("assistant_id", "")
+        # Usar el assistant_id del request, no del LLM
+        search_assistant_id = assistant_id or arguments.get("assistant_id", "")
         
         results = await vector_store.search_similar(
             query=query,
             limit=limit,
-            assistant_id=assistant_id
+            assistant_id=search_assistant_id
         )
         return json.dumps(results)
     
@@ -189,6 +198,7 @@ async def chat_auto_tools_endpoint(request: ChatRequest):
         context = None
         max_iterations = 5  # Prevenir loops infinitos
         iteration = 0
+        tools_executed_log = []  # Log de tools ejecutadas
         
         # Get initial context if requested
         if request.use_vector_context and request.messages:
@@ -231,7 +241,9 @@ async def chat_auto_tools_endpoint(request: ChatRequest):
                     response=content,
                     context_used=context,
                     tool_calls=None,
-                    finish_reason=finish_reason
+                    finish_reason=finish_reason,
+                    iterations=iteration,
+                    tools_executed=tools_executed_log if tools_executed_log else None
                 )
             
             # Add assistant message with tool calls
@@ -252,8 +264,15 @@ async def chat_auto_tools_endpoint(request: ChatRequest):
                 
                 print(f"   ⚙️  {tool_name}({arguments})")
                 
-                # Execute tool
-                tool_result = await execute_tool(tool_name, arguments)
+                # Execute tool with assistant_id from request
+                tool_result = await execute_tool(tool_name, arguments, request.assistant_id)
+                
+                # Log tool execution
+                tools_executed_log.append(ToolExecutionLog(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    result_preview=tool_result[:200] if len(tool_result) > 200 else tool_result
+                ))
                 
                 # Add tool response message
                 tool_msg = {
@@ -271,7 +290,9 @@ async def chat_auto_tools_endpoint(request: ChatRequest):
             response="Max iterations reached. Unable to complete request.",
             context_used=context,
             tool_calls=None,
-            finish_reason="length"
+            finish_reason="length",
+            iterations=max_iterations,
+            tools_executed=tools_executed_log if tools_executed_log else None
         )
         
     except Exception as e:
