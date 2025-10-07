@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uvicorn
+import json
 
 from config import Config
 from supabase_client import vector_store
@@ -28,22 +29,70 @@ async def startup_event():
 class ChatMessage(BaseModel):
     role: str
     content: str
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    tool_call_id: Optional[str] = None
+
+class ToolDefinition(BaseModel):
+    type: str = "function"
+    function: Dict[str, Any]
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     use_vector_context: bool = True
     vector_limit: int = 5
     assistant_id: str
+    tools: Optional[List[ToolDefinition]] = None
+    tool_choice: Optional[str] = "auto"  # "auto", "none", or specific tool
 
 class ChatResponse(BaseModel):
     response: str
     context_used: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    finish_reason: Optional[str] = None
+
+# Tool execution functions
+async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
+    """
+    Execute a tool based on its name
+    """
+    if tool_name == "search_vector_store":
+        query = arguments.get("query", "")
+        limit = arguments.get("limit", 5)
+        assistant_id = arguments.get("assistant_id", "")
+        
+        results = await vector_store.search_similar(
+            query=query,
+            limit=limit,
+            assistant_id=assistant_id
+        )
+        return json.dumps(results)
+    
+    elif tool_name == "get_current_weather":
+        location = arguments.get("location", "")
+        # Simulación de respuesta del tiempo
+        return json.dumps({
+            "location": location,
+            "temperature": "22°C",
+            "condition": "Sunny",
+            "humidity": "65%"
+        })
+    
+    # 👇 AÑADE TUS NUEVAS TOOLS AQUÍ
+    # elif tool_name == "mi_nueva_tool":
+    #     param1 = arguments.get("param1")
+    #     # Tu lógica aquí
+    #     result = await mi_funcion(param1)
+    #     return json.dumps(result)
+    
+    else:
+        return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 # Main endpoint
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
     """
     Endpoint principal que integra OpenRouter con Supabase vector store
+    Soporta function calling / tools
     """
     try:
         context = None
@@ -70,27 +119,159 @@ async def chat_endpoint(request: ChatRequest):
             print(f"📄 Context preview: {context[:100]}...")
         
         # Convert messages to the format expected by OpenRouter
-        openrouter_messages = [
-            {"role": msg.role, "content": msg.content} 
-            for msg in request.messages
-        ]
+        openrouter_messages = []
+        for msg in request.messages:
+            message_dict = {"role": msg.role, "content": msg.content}
+            if msg.tool_calls:
+                message_dict["tool_calls"] = msg.tool_calls
+            if msg.tool_call_id:
+                message_dict["tool_call_id"] = msg.tool_call_id
+            openrouter_messages.append(message_dict)
         
         print(f"\n💬 Messages to send ({len(openrouter_messages)} messages):")
         for i, msg in enumerate(openrouter_messages):
-            print(f"  {i+1}. [{msg['role'].upper()}]: {msg['content'][:50]}...")
+            content_preview = str(msg.get('content', ''))[:50] if msg.get('content') else 'N/A'
+            print(f"  {i+1}. [{msg['role'].upper()}]: {content_preview}...")
         
-        # Call OpenRouter with context
+        # Prepare tools for OpenRouter
+        tools = None
+        if request.tools:
+            tools = [tool.dict() for tool in request.tools]
+        
+        # Call OpenRouter with context and tools
         print(f"\n🚀 Calling OpenRouter...")
-        response = await openrouter_client.chat_completion(
+        if tools:
+            print(f"🔧 Tools enabled: {len(tools)} tools")
+        
+        response_data = await openrouter_client.chat_completion(
             messages=openrouter_messages,
-            context=context
+            context=context,
+            tools=tools,
+            tool_choice=request.tool_choice
         )
         
-        print(f"\n✅ OpenRouter response ({len(response) if response else 0} characters):")
-        print(f"📝 Response preview: {response[:100] if response else 'No response'}...")
+        # Check if response contains tool calls
+        finish_reason = response_data.get("finish_reason", "stop")
+        tool_calls = response_data.get("tool_calls")
+        response_content = response_data.get("content", "")
+        
+        print(f"\n✅ OpenRouter response:")
+        print(f"   📝 Finish reason: {finish_reason}")
+        print(f"   🔧 Tool calls: {len(tool_calls) if tool_calls else 0}")
+        
+        # If there are tool calls, we might want to execute them automatically
+        # or return them to the client to handle
+        if tool_calls and finish_reason == "tool_calls":
+            print(f"\n🔨 Processing tool calls...")
+            for tool_call in tool_calls:
+                tool_name = tool_call["function"]["name"]
+                arguments = json.loads(tool_call["function"]["arguments"])
+                print(f"   🔹 Executing: {tool_name} with {arguments}")
+        
         return ChatResponse(
-            response=response,
-            context_used=context
+            response=response_content,
+            context_used=context,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+
+# Auto-loop endpoint with automatic tool execution
+@app.post("/chat/auto-tools", response_model=ChatResponse)
+async def chat_auto_tools_endpoint(request: ChatRequest):
+    """
+    Endpoint que ejecuta automáticamente los tool calls en un loop
+    hasta que el LLM dé una respuesta final
+    """
+    try:
+        context = None
+        max_iterations = 5  # Prevenir loops infinitos
+        iteration = 0
+        
+        # Get initial context if requested
+        if request.use_vector_context and request.messages:
+            last_message = request.messages[-1].content if request.messages[-1].role == "user" else ""
+            if last_message:
+                similar_docs = await vector_store.search_similar(
+                    query=last_message,
+                    limit=request.vector_limit,
+                    assistant_id=request.assistant_id
+                )
+                if similar_docs:
+                    context = "\n".join([doc.get("content", "") for doc in similar_docs[:3]])
+        
+        # Working messages list
+        messages = [msg.dict() for msg in request.messages]
+        tools = [tool.dict() for tool in request.tools] if request.tools else None
+        
+        print(f"\n🔄 Starting auto-tool loop...")
+        
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🔁 Iteration {iteration}/{max_iterations}")
+            
+            # Call OpenRouter
+            response_data = await openrouter_client.chat_completion(
+                messages=messages,
+                context=context if iteration == 1 else None,  # Context only on first call
+                tools=tools,
+                tool_choice=request.tool_choice
+            )
+            
+            finish_reason = response_data.get("finish_reason", "stop")
+            tool_calls = response_data.get("tool_calls")
+            content = response_data.get("content", "")
+            
+            # If no tool calls, we're done
+            if finish_reason != "tool_calls" or not tool_calls:
+                print(f"✅ Final response (finish_reason: {finish_reason})")
+                return ChatResponse(
+                    response=content,
+                    context_used=context,
+                    tool_calls=None,
+                    finish_reason=finish_reason
+                )
+            
+            # Add assistant message with tool calls
+            assistant_msg = {
+                "role": "assistant",
+                "content": content or "",
+                "tool_calls": tool_calls
+            }
+            messages.append(assistant_msg)
+            
+            print(f"🔧 Executing {len(tool_calls)} tool call(s)...")
+            
+            # Execute each tool call
+            for tool_call in tool_calls:
+                tool_name = tool_call["function"]["name"]
+                arguments = json.loads(tool_call["function"]["arguments"])
+                tool_call_id = tool_call["id"]
+                
+                print(f"   ⚙️  {tool_name}({arguments})")
+                
+                # Execute tool
+                tool_result = await execute_tool(tool_name, arguments)
+                
+                # Add tool response message
+                tool_msg = {
+                    "role": "tool",
+                    "content": tool_result,
+                    "tool_call_id": tool_call_id
+                }
+                messages.append(tool_msg)
+                
+                print(f"   ✓ Result: {tool_result[:100]}...")
+        
+        # Max iterations reached
+        print(f"⚠️  Max iterations ({max_iterations}) reached")
+        return ChatResponse(
+            response="Max iterations reached. Unable to complete request.",
+            context_used=context,
+            tool_calls=None,
+            finish_reason="length"
         )
         
     except Exception as e:
