@@ -3,11 +3,12 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
 import json
-import httpx
 
 from config import Config
 from supabase_client import vector_store
 from openrouter_client import openrouter_client
+from tools import TOOL_FUNCTIONS
+from tools.vector_store_tool import search_vector_store
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -64,76 +65,17 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any], assistant_id: 
     """
     Execute a tool based on its name
     """
+    # Búsqueda en vector store (caso especial con assistant_id)
     if tool_name == "search_vector_store":
-        query = arguments.get("query", "")
-        limit = arguments.get("limit", 5)
-        # Usar el assistant_id del request, no del LLM
-        search_assistant_id = assistant_id or arguments.get("assistant_id", "")
-        
-        results = await vector_store.search_similar(
-            query=query,
-            limit=limit,
-            assistant_id=search_assistant_id
-        )
-        return json.dumps(results)
+        return await search_vector_store(arguments, assistant_id)
     
-    elif tool_name == "get_current_weather":
-        location = arguments.get("location", "")
-        
-        if not Config.WEATHER_API_KEY:
-            # Fallback a simulación si no hay API key
-            return json.dumps({
-                "location": location,
-                "temperature": "22°C",
-                "condition": "Sunny",
-                "humidity": "65%",
-                "note": "Using simulated data - no API key configured"
-            })
-        
-        try:
-            # Llamada real a WeatherAPI.com
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "http://api.weatherapi.com/v1/current.json",
-                    params={
-                        "key": Config.WEATHER_API_KEY,
-                        "q": location,
-                        "aqi": "no"
-                    },
-                    timeout=10.0
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    return json.dumps({
-                        "location": f"{data['location']['name']}, {data['location']['country']}",
-                        "temperature": f"{data['current']['temp_c']}°C",
-                        "condition": data['current']['condition']['text'],
-                        "humidity": f"{data['current']['humidity']}%",
-                        "wind_kph": data['current']['wind_kph'],
-                        "feels_like": f"{data['current']['feelslike_c']}°C"
-                    })
-                else:
-                    return json.dumps({
-                        "error": f"Weather API error: {response.status_code}",
-                        "location": location
-                    })
-                    
-        except Exception as e:
-            return json.dumps({
-                "error": f"Failed to fetch weather: {str(e)}",
-                "location": location
-            })
+    # Buscar la función en el mapeo de tools
+    if tool_name in TOOL_FUNCTIONS:
+        tool_func = TOOL_FUNCTIONS[tool_name]
+        return await tool_func(arguments)
     
-    # 👇 AÑADE TUS NUEVAS TOOLS AQUÍ
-    # elif tool_name == "mi_nueva_tool":
-    #     param1 = arguments.get("param1")
-    #     # Tu lógica aquí
-    #     result = await mi_funcion(param1)
-    #     return json.dumps(result)
-    
-    else:
-        return json.dumps({"error": f"Unknown tool: {tool_name}"})
+    # Tool no encontrada
+    return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 # Main endpoint
 @app.post("/chat", response_model=ChatResponse)
