@@ -96,7 +96,8 @@ curl --location 'http://localhost:8000/chat' \
         }
     ],
     "use_vector_context": true,
-    "vector_limit": 3
+    "vector_limit": 3,
+    "assistant_id: xxxx
 }'
 ```
 

@@ -39,7 +39,7 @@ class SupabaseVectorStore:
             print(f"   ❌ Error generating embedding: {e}")
             return None
     
-    async def search_similar_vector(self, query: str, table_name: str = "documents", limit: int = 5):
+    async def search_similar_vector(self, query: str, table_name: str = "documents", limit: int = 5, assistant_id: str = None):
         """
         Search for similar documents using vector similarity with Supabase's native vector search
         """
@@ -67,7 +67,7 @@ class SupabaseVectorStore:
                         {
                             'query_embedding': query_embedding,
                             'match_count': limit,
-                            'filter': {}
+                            'filter': {'assistantId': assistant_id} if assistant_id else {}
                         }
                     ).execute()
                     
@@ -89,7 +89,10 @@ class SupabaseVectorStore:
             
             # Fallback: get all documents and do text-based similarity
             print(f"   🔍 Checking database for documents...")
-            response = self.client.table(table_name).select("*").execute()
+            query_builder = self.client.table(table_name).select("*")
+            if assistant_id:
+                query_builder = query_builder.eq("assistant_id", assistant_id)
+            response = query_builder.execute()
             
             print(f"   📊 Database query returned: {len(response.data) if response.data else 0} documents")
             
@@ -143,7 +146,7 @@ class SupabaseVectorStore:
             print(f"   ❌ Vector search failed: {e}")
             return []
 
-    async def search_similar(self, query: str, table_name: str = "documents", limit: int = 5):
+    async def search_similar(self, query: str, table_name: str = "documents", limit: int = 5, assistant_id: str = None):
         """
         Search for similar documents using vector similarity with fallback to text search
         """
@@ -159,7 +162,7 @@ class SupabaseVectorStore:
         # First try vector search
         try:
             print(f"   🚀 Attempting vector similarity search...")
-            vector_results = await self.search_similar_vector(query, table_name, limit)
+            vector_results = await self.search_similar_vector(query, table_name, limit, assistant_id)
             
             if vector_results:
                 print(f"   ✅ Vector search successful, returning {len(vector_results)} results")
@@ -174,7 +177,10 @@ class SupabaseVectorStore:
         # Fallback to text search
         try:
             print(f"   🔍 Performing text-based search...")
-            response = self.client.table(table_name).select("*").execute()
+            query_builder = self.client.table(table_name).select("*")
+            if assistant_id:
+                query_builder = query_builder.eq("assistant_id", assistant_id)
+            response = query_builder.execute()
             
             if not response.data:
                 print(f"   📭 No documents found in database")

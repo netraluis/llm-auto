@@ -33,6 +33,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     use_vector_context: bool = True
     vector_limit: int = 5
+    assistant_id: str
 
 class ChatResponse(BaseModel):
     response: str
@@ -56,7 +57,8 @@ async def chat_endpoint(request: ChatRequest):
                 # Search for similar documents in vector store
                 similar_docs = await vector_store.search_similar(
                     query=last_message,
-                    limit=request.vector_limit
+                    limit=request.vector_limit,
+                    assistant_id=request.assistant_id
                 )
                 
                 if similar_docs:
