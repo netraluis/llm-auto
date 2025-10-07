@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
 import json
+import httpx
 
 from config import Config
 from supabase_client import vector_store
@@ -78,13 +79,51 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any], assistant_id: 
     
     elif tool_name == "get_current_weather":
         location = arguments.get("location", "")
-        # Simulación de respuesta del tiempo
-        return json.dumps({
-            "location": location,
-            "temperature": "22°C",
-            "condition": "Sunny",
-            "humidity": "65%"
-        })
+        
+        if not Config.WEATHER_API_KEY:
+            # Fallback a simulación si no hay API key
+            return json.dumps({
+                "location": location,
+                "temperature": "22°C",
+                "condition": "Sunny",
+                "humidity": "65%",
+                "note": "Using simulated data - no API key configured"
+            })
+        
+        try:
+            # Llamada real a WeatherAPI.com
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "http://api.weatherapi.com/v1/current.json",
+                    params={
+                        "key": Config.WEATHER_API_KEY,
+                        "q": location,
+                        "aqi": "no"
+                    },
+                    timeout=10.0
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return json.dumps({
+                        "location": f"{data['location']['name']}, {data['location']['country']}",
+                        "temperature": f"{data['current']['temp_c']}°C",
+                        "condition": data['current']['condition']['text'],
+                        "humidity": f"{data['current']['humidity']}%",
+                        "wind_kph": data['current']['wind_kph'],
+                        "feels_like": f"{data['current']['feelslike_c']}°C"
+                    })
+                else:
+                    return json.dumps({
+                        "error": f"Weather API error: {response.status_code}",
+                        "location": location
+                    })
+                    
+        except Exception as e:
+            return json.dumps({
+                "error": f"Failed to fetch weather: {str(e)}",
+                "location": location
+            })
     
     # 👇 AÑADE TUS NUEVAS TOOLS AQUÍ
     # elif tool_name == "mi_nueva_tool":

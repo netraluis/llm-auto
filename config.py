@@ -16,6 +16,9 @@ class Config:
     # OpenAI (for embeddings)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     
+    # Weather API
+    WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+    
     @classmethod
     def validate(cls):
         required_vars = ["SUPABASE_URL", "SUPABASE_KEY", "OPENROUTER_API_KEY", "SUPABASE_TABLE"]
