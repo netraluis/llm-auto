@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
 import json
+import os
+from openai import OpenAI
 
 from config import Config
 from supabase_client import vector_store
@@ -16,6 +18,9 @@ app = FastAPI(
     description="Backend que integra OpenRouter con Supabase Vector Store",
     version="1.0.0"
 )
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # Validate configuration on startup
 @app.on_event("startup")
@@ -278,6 +283,14 @@ async def chat_auto_tools_endpoint(request: ChatRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+
+
+@app.post("/api/chatkit/session")
+def create_chatkit_session():
+    session = openai_client.chatkit.sessions.create({
+      # ...
+    })
+    return { client_secret: session.client_secret }
 
 # Health check endpoint
 @app.get("/health")

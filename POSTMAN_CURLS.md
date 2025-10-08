@@ -11,7 +11,14 @@ curl --location 'http://localhost:8000/health' \
 --method GET
 ```
 
-## 2. Chat Endpoint (Principal)
+## 2. Create ChatKit Session
+```bash
+curl --location 'http://localhost:8000/api/chatkit/session' \
+--method POST \
+--header 'Content-Type: application/json'
+```
+
+## 3. Chat Endpoint (Principal)
 ```bash
 curl --location 'http://localhost:8000/chat' \
 --header 'Content-Type: application/json' \
@@ -27,7 +34,7 @@ curl --location 'http://localhost:8000/chat' \
 }'
 ```
 
-## 3. Chat sin contexto del vector store
+## 4. Chat sin contexto del vector store
 ```bash
 curl --location 'http://localhost:8000/chat' \
 --header 'Content-Type: application/json' \
@@ -43,7 +50,7 @@ curl --location 'http://localhost:8000/chat' \
 }'
 ```
 
-## 4. Chat con múltiples mensajes (conversación)
+## 5. Chat con múltiples mensajes (conversación)
 ```bash
 curl --location 'http://localhost:8000/chat' \
 --header 'Content-Type: application/json' \
@@ -67,13 +74,13 @@ curl --location 'http://localhost:8000/chat' \
 }'
 ```
 
-## 5. Obtener documentos del vector store
+## 6. Obtener documentos del vector store
 ```bash
 curl --location 'http://localhost:8000/documents?limit=10' \
 --method GET
 ```
 
-## 6. Añadir documento al vector store
+## 7. Añadir documento al vector store
 ```bash
 curl --location 'http://localhost:8000/documents' \
 --header 'Content-Type: application/json' \
@@ -87,7 +94,7 @@ curl --location 'http://localhost:8000/documents' \
 }'
 ```
 
-## 7. Añadir documento sin metadata
+## 8. Añadir documento sin metadata
 ```bash
 curl --location 'http://localhost:8000/documents' \
 --header 'Content-Type: application/json' \
@@ -96,25 +103,32 @@ curl --location 'http://localhost:8000/documents' \
 }'
 ```
 
-## 8. Debug: Verificar estado de Supabase
+## 9. Debug: Verificar estado de Supabase
 ```bash
 curl --location 'http://localhost:8000/debug/supabase-status' \
 --method GET
 ```
 
-## 9. Debug: Listar tablas disponibles
+## 10. Debug: Listar tablas disponibles
 ```bash
 curl --location 'http://localhost:8000/debug/tables' \
 --method GET
 ```
 
-## 10. Debug: Verificar estructura de tabla
+## 11. Debug: Verificar estructura de tabla
 ```bash
 curl --location 'http://localhost:8000/debug/table-structure/documents' \
 --method GET
 ```
 
 ## Ejemplos de respuestas esperadas:
+
+### ChatKit Session Response:
+```json
+{
+    "client_secret": "cs_live_abc123xyz..."
+}
+```
 
 ### Chat Response:
 ```json
