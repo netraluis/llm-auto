@@ -3,14 +3,13 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
 import json
-import os
-from openai import OpenAI
 
 from config import Config
 from supabase_client import vector_store
 from openrouter_client import openrouter_client
 from tools import TOOL_FUNCTIONS
 from tools.vector_store_tool import search_vector_store
+from meritxell_workflow_agent import run_workflow, WorkflowInput
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -18,9 +17,6 @@ app = FastAPI(
     description="Backend que integra OpenRouter con Supabase Vector Store",
     version="1.0.0"
 )
-
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # Validate configuration on startup
 @app.on_event("startup")
@@ -284,14 +280,6 @@ async def chat_auto_tools_endpoint(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
-
-@app.post("/api/chatkit/session")
-def create_chatkit_session():
-    session = openai_client.chatkit.sessions.create({
-      # ...
-    })
-    return { client_secret: session.client_secret }
-
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -351,6 +339,43 @@ async def debug_supabase_status():
         return status
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Meritxell workflow endpoint
+class MeritxellRequest(BaseModel):
+    input_text: str
+
+class MeritxellResponse(BaseModel):
+    output_text: str
+    status: str = "success"
+
+@app.post("/meritxell/chat", response_model=MeritxellResponse)
+async def meritxell_chat_endpoint(request: MeritxellRequest):
+    """
+    Endpoint para el workflow de Meritxell - Asistente para el Acord d'Associació Andorra-UE
+    """
+    try:
+        print(f"\n💬 Meritxell workflow iniciado")
+        print(f"📝 Input: {request.input_text[:100]}...")
+        
+        # Crear el input del workflow
+        workflow_input = WorkflowInput(input_as_text=request.input_text)
+        
+        # Ejecutar el workflow
+        result = await run_workflow(workflow_input)
+        
+        # Extraer la respuesta según si pasó por guardrails o no
+        output_text = result.get("output_text") if result else "Error: No se obtuvo respuesta"
+        
+        print(f"✅ Respuesta generada: {output_text[:100]}...")
+        
+        return MeritxellResponse(
+            output_text=output_text,
+            status="success"
+        )
+        
+    except Exception as e:
+        print(f"❌ Error en Meritxell workflow: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing Meritxell request: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(
