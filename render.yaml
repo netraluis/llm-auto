@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: llm-auto-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_TABLE
+        value: documents
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: meta-llama/llama-3.1-8b-instruct:free
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: WEATHER_API_KEY
+        sync: false
